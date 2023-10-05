@@ -38,6 +38,8 @@ class FileUploadController extends Controller
             'file' => 'required|mimes:pdf,docx,doc|max:2048',
         ]);
         
+
+
         // Upload File
         $fileName = $request->file->getClientOriginalName();
         $filePath = 'uploads/' . $fileName;
@@ -45,9 +47,55 @@ class FileUploadController extends Controller
         $path = Storage::disk('public')->put($filePath, file_get_contents($request->file));
         $path = Storage::disk('public')->url($path);
 
-        $pdfParser = new Parser();
-        $pdf = $pdfParser->parseFile($request->file->path());
-        $content = $pdf->getText();
+        // Check File Extention
+        if($request->file->extension() === 'pdf'){
+            $pdfParser = new Parser();
+            $pdf = $pdfParser->parseFile($request->file->path());
+            $content = $pdf->getText();
+        }
+        elseif($request->file->extension() === 'docx'){
+        $striped_content = '';
+        $content = '';
+
+        $zip = zip_open($request->file->path());
+
+        if (!$zip || is_numeric($zip)) return false;
+
+        while ($zip_entry = zip_read($zip)) {
+
+            if (zip_entry_open($zip, $zip_entry) == FALSE) continue;
+
+            if (zip_entry_name($zip_entry) != "word/document.xml") continue;
+
+            $content .= zip_entry_read($zip_entry, zip_entry_filesize($zip_entry));
+
+            zip_entry_close($zip_entry);
+        }
+
+        zip_close($zip);
+
+        $content = str_replace('</w:r></w:p></w:tc><w:tc>', " ", $content);
+        $content = str_replace('</w:r></w:p>', "\r\n", $content);
+        $content = strip_tags($content);
+        }
+        else{
+            $fileHandle = fopen($request->file->path(), "r");
+            $line = @fread($fileHandle, filesize($request->file->path()));   
+            $lines = explode(chr(0x0D),$line);
+            $outtext = "";
+            foreach($lines as $thisline)
+              {
+                $pos = strpos($thisline, chr(0x00));
+                if (($pos !== FALSE)||(strlen($thisline)==0))
+                  {
+                  } else {
+                    $outtext .= $thisline." ";
+                  }
+              }
+             $content = preg_replace("/[^a-zA-Z0-9\s\,\.\-\n\r\t@\/\_\(\)]/","",$outtext);
+        }
+        dd($content);
+        
 
 
         // Insert record
